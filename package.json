@@ -1,0 +1,26 @@
+{
+  "name": "bygagoos-ink",
+  "version": "1.0.0",
+  "description": "Application de gestion pour ByGagoos Ink",
+  "scripts": {
+    "dev": "concurrently \"cd backend && npm run dev\" \"cd frontend && npm run dev\"",
+    "start": "docker-compose up",
+    "start:prod": "docker-compose -f docker-compose.prod.yml up -d",
+    "stop": "docker-compose down",
+    "stop:prod": "docker-compose -f docker-compose.prod.yml down",
+    "clean": "docker system prune -f",
+    "logs": "docker-compose logs -f",
+    "logs:backend": "docker-compose logs -f backend",
+    "logs:frontend": "docker-compose logs -f frontend",
+    "db:migrate": "cd backend && npx prisma migrate deploy",
+    "db:studio": "cd backend && npx prisma studio",
+    "build": "cd frontend && npm run build",
+    "test": "cd frontend && npm run test:e2e"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "keywords": ["serigraphie", "gestion", "production", "bygagoos"],
+  "author": "ByGagoos Team",
+  "license": "MIT"
+}
