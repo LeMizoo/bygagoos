@@ -1,11 +1,14 @@
+// backend/app.js
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
+const { PrismaClient } = require('@prisma/client');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 const NODE_ENV = process.env.NODE_ENV || 'development';
+const prisma = new PrismaClient();
 
 // Middleware
 app.use(cors({
@@ -16,9 +19,11 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Servir les fichiers statiques
+// Servir les fichiers statiques - IMPORTANT: Chemin corrigé
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-app.use('/api/images', express.static(path.join(__dirname, 'public')));
+
+// CORRECTION : Servir le dossier public à la racine de /api/images
+app.use('/api/images', express.static(path.join(__dirname, 'public', 'images')));
 
 // Middleware de logging
 app.use((req, res, next) => {
@@ -36,6 +41,10 @@ app.get('/api/health', (req, res) => {
     environment: NODE_ENV
   });
 });
+
+// Import des routes
+const ordersRoutes = require('./routes/orders');
+const productionRoutes = require('./routes/production');
 
 // Route publique pour la galerie d'images
 app.get('/api/public/gallery', async (req, res) => {
@@ -120,8 +129,8 @@ app.get('/api/public/gallery', async (req, res) => {
       // Images générales (images/)
       {
         id: 9,
-        url: '/api/images/images/team-family.jpg',
-        thumbnail: '/api/images/images/team-family.jpg',
+        url: '/api/images/team-family.jpg',
+        thumbnail: '/api/images/team-family.jpg',
         title: 'L\'Esprit Familial',
         category: 'team',
         description: 'Plus qu\'une entreprise, une famille',
@@ -129,8 +138,8 @@ app.get('/api/public/gallery', async (req, res) => {
       },
       {
         id: 10,
-        url: '/api/images/images/inauguration.jpg',
-        thumbnail: '/api/images/images/inauguration.jpg',
+        url: '/api/images/inauguration.jpg',
+        thumbnail: '/api/images/inauguration.jpg',
         title: 'Inauguration',
         category: 'events',
         description: 'Début de notre aventure',
@@ -138,8 +147,8 @@ app.get('/api/public/gallery', async (req, res) => {
       },
       {
         id: 11,
-        url: '/api/images/images/bygagoos-large.png',
-        thumbnail: '/api/images/images/bygagoos-large.png',
+        url: '/api/images/bygagoos-large.png',
+        thumbnail: '/api/images/bygagoos-large.png',
         title: 'Notre Identité Visuelle',
         category: 'creations',
         description: 'Logo ByGagoos Ink - Version complète',
@@ -147,8 +156,8 @@ app.get('/api/public/gallery', async (req, res) => {
       },
       {
         id: 12,
-        url: '/api/images/images/logo.png',
-        thumbnail: '/api/images/images/logo.png',
+        url: '/api/images/logo.png',
+        thumbnail: '/api/images/logo.png',
         title: 'Logo ByGagoos Ink',
         category: 'creations',
         description: 'Notre signature',
@@ -538,161 +547,11 @@ app.get('/api/auth/verify', async (req, res) => {
   }
 });
 
-// Routes pour les commandes
-app.get('/api/orders', async (req, res) => {
-  try {
-    const orders = [
-      {
-        id: 'ORD-001',
-        clientId: 1,
-        clientName: 'Nike Store',
-        clientEmail: 'contact@nike.com',
-        total: 1850,
-        status: 'processing',
-        date: '2024-01-15',
-        dueDate: '2024-01-22',
-        items: [
-          { product: 'T-shirt Blanc', quantity: 100, price: 12.50 },
-          { product: 'Sweat Noir', quantity: 50, price: 25.00 }
-        ],
-        notes: 'Commande urgente - livraison express'
-      },
-      {
-        id: 'ORD-002',
-        clientId: 2,
-        clientName: 'Adidas',
-        clientEmail: 'contact@adidas.com',
-        total: 2400,
-        status: 'pending',
-        date: '2024-01-14',
-        dueDate: '2024-01-25',
-        items: [
-          { product: 'Polo Bleu', quantity: 200, price: 15.00 },
-          { product: 'Short Sport', quantity: 150, price: 18.00 }
-        ],
-        notes: 'Logos brodés'
-      },
-      {
-        id: 'ORD-003',
-        clientId: 3,
-        clientName: 'Puma',
-        clientEmail: 'contact@puma.com',
-        total: 1200,
-        status: 'completed',
-        date: '2024-01-13',
-        dueDate: '2024-01-20',
-        items: [
-          { product: 'Casquette Noire', quantity: 300, price: 8.00 },
-          { product: 'Sac Sport', quantity: 100, price: 12.00 }
-        ],
-        notes: 'Livré avec facture'
-      },
-      {
-        id: 'ORD-004',
-        clientId: 4,
-        clientName: 'Decathlon',
-        clientEmail: 'commande@decathlon.com',
-        total: 3150,
-        status: 'processing',
-        date: '2024-01-12',
-        dueDate: '2024-01-30',
-        items: [
-          { product: 'T-shirt Technique', quantity: 500, price: 4.50 },
-          { product: 'Veste Sport', quantity: 200, price: 32.00 }
-        ],
-        notes: 'Commande spéciale - tissu technique'
-      },
-      {
-        id: 'ORD-005',
-        clientId: 5,
-        clientName: 'New Balance',
-        clientEmail: 'orders@newbalance.com',
-        total: 950,
-        status: 'preparation',
-        date: '2024-01-11',
-        dueDate: '2024-01-18',
-        items: [
-          { product: 'Chaussettes Sport', quantity: 1000, price: 0.95 }
-        ],
-        notes: 'Packaging spécial requis'
-      }
-    ];
-    
-    res.json({
-      success: true,
-      count: orders.length,
-      data: orders
-    });
-    
-  } catch (error) {
-    console.error('❌ Erreur orders:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erreur serveur'
-    });
-  }
-});
+// Routes API principales
+app.use('/api/orders', ordersRoutes);
+app.use('/api/production', productionRoutes);
 
-// Route pour une commande spécifique
-app.get('/api/orders/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    
-    // Simuler une commande
-    const order = {
-      id: id,
-      clientId: 1,
-      clientName: 'Nike Store',
-      clientEmail: 'contact@nike.com',
-      clientPhone: '+33 1 23 45 67 89',
-      clientAddress: '123 Avenue du Sport, 75015 Paris',
-      total: 1850,
-      status: 'processing',
-      date: '2024-01-15',
-      dueDate: '2024-01-22',
-      paymentStatus: 'paid',
-      deliveryMethod: 'express',
-      items: [
-        { 
-          id: 1, 
-          product: 'T-shirt Blanc 100% Coton', 
-          quantity: 100, 
-          price: 12.50,
-          size: 'M',
-          color: 'Blanc',
-          design: 'Logo Nike brodé'
-        },
-        { 
-          id: 2, 
-          product: 'Sweat Noir à capuche', 
-          quantity: 50, 
-          price: 25.00,
-          size: 'L',
-          color: 'Noir',
-          design: 'Impression numérique'
-        }
-      ],
-      notes: 'Commande urgente - livraison express',
-      productionNotes: 'Vérifier qualité impression sur sweats',
-      createdAt: '2024-01-10T09:30:00Z',
-      updatedAt: '2024-01-15T14:20:00Z'
-    };
-    
-    res.json({
-      success: true,
-      data: order
-    });
-    
-  } catch (error) {
-    console.error('❌ Erreur order detail:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erreur serveur'
-    });
-  }
-});
-
-// Routes pour les clients
+// Routes simulées pour compatibilité
 app.get('/api/clients', async (req, res) => {
   try {
     const clients = [
@@ -778,7 +637,7 @@ app.get('/api/clients', async (req, res) => {
   }
 });
 
-// Routes pour les produits
+// Route pour les produits
 app.get('/api/products', async (req, res) => {
   try {
     const products = [
@@ -838,7 +697,7 @@ app.get('/api/products', async (req, res) => {
   }
 });
 
-// Routes pour le stock
+// Route pour le stock
 app.get('/api/stock', async (req, res) => {
   try {
     const stock = [
@@ -872,7 +731,7 @@ app.get('/api/stock', async (req, res) => {
         unit: 'unités',
         minQuantity: 10,
         supplier: 'Pro Tools',
-        lastOrder: '2023-12-20',
+        lastOrder: '2025-12-20',
         status: 'low'
       },
       {
@@ -906,15 +765,34 @@ app.get('/api/stock', async (req, res) => {
 // Route pour les statistiques dashboard
 app.get('/api/dashboard/stats', async (req, res) => {
   try {
+    // Utiliser les vraies données de la base
+    const [
+      totalOrders,
+      totalRevenue,
+      pendingOrders,
+      completedOrders,
+      activeClients,
+      lowStockItems
+    ] = await Promise.all([
+      prisma.order.count(),
+      prisma.order.aggregate({
+        _sum: { totalAmount: true }
+      }),
+      prisma.order.count({ where: { status: 'PENDING' } }),
+      prisma.order.count({ where: { status: 'COMPLETED' } }),
+      prisma.client.count(),
+      prisma.product.count({ where: { stock: { lt: 10 } } })
+    ]);
+
     const stats = {
-      totalRevenue: 24850,
-      totalOrders: 48,
+      totalRevenue: totalRevenue._sum.totalAmount || 0,
+      totalOrders: totalOrders,
       newClients: 12,
       stockLevel: 85,
-      pendingOrders: 8,
-      completedOrders: 32,
-      activeClients: 42,
-      lowStockItems: 4,
+      pendingOrders: pendingOrders,
+      completedOrders: completedOrders,
+      activeClients: activeClients,
+      lowStockItems: lowStockItems,
       monthlyGrowth: 12.5,
       weeklySales: [
         { day: 'Lun', sales: 4200, orders: 12 },
@@ -966,11 +844,8 @@ app.listen(PORT, () => {
   console.log(`📊 Environnement: ${NODE_ENV}`);
   console.log(`🌐 CORS Origin: ${process.env.CORS_ORIGIN || 'http://localhost:5173'}`);
   console.log(`🏥 Health check: http://localhost:${PORT}/api/health`);
-  console.log(`📸 Galerie publique: http://localhost:${PORT}/api/public/gallery`);
-  console.log(`🏢 Info entreprise: http://localhost:${PORT}/api/public/company-info`);
-  console.log(`🔐 Login test: POST http://localhost:${PORT}/api/auth/login`);
-  console.log(`📋 Commandes: GET http://localhost:${PORT}/api/orders`);
-  console.log(`👥 Clients: GET http://localhost:${PORT}/api/clients`);
-  console.log(`🎨 Accès images: http://localhost:${PORT}/api/images/profiles/miantsatiana.jpg`);
-  console.log(`🏭 Production images: http://localhost:${PORT}/api/images/production/atelier-serigraphie.jpg`);
+  console.log(`📦 Commandes API: http://localhost:${PORT}/api/orders`);
+  console.log(`⚙️ Production API: http://localhost:${PORT}/api/production/tasks`);
+  console.log(`📊 Dashboard API: http://localhost:${PORT}/api/dashboard/stats`);
+  console.log(`🖼️ Images API: http://localhost:${PORT}/api/images/team-family.jpg`);
 });

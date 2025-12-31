@@ -1,3 +1,4 @@
+// backend/prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
@@ -20,6 +21,7 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   activityLogs  ActivityLog[]
+  assignedTasks Task[]
   
   @@index([familyId])
 }
@@ -66,14 +68,18 @@ model Order {
   status        String      @default("PENDING")
   notes         String?
   deliveryDate  DateTime?
+  deadline      DateTime?
+  priority      String      @default("MEDIUM")
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
   orderItems    OrderItem[]
+  tasks         Task[]
   
   @@index([clientId])
   @@index([orderNumber])
   @@index([status])
   @@index([createdAt])
+  @@index([priority])
 }
 
 model OrderItem {
@@ -89,6 +95,29 @@ model OrderItem {
   
   @@index([orderId])
   @@index([productId])
+}
+
+model Task {
+  id            Int       @id @default(autoincrement())
+  orderId       Int
+  order         Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  type          String    @default("PRINTING")
+  name          String
+  description   String?
+  assignedToId  Int?
+  assignedTo    User?     @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
+  status        String    @default("PENDING")
+  startTime     DateTime?
+  endTime       DateTime?
+  estimatedHours Float?
+  actualHours   Float?
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([orderId])
+  @@index([assignedToId])
+  @@index([status])
 }
 
 model Consumable {
