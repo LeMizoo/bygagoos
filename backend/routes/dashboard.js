@@ -1,23 +1,25 @@
 const express = require('express');
-const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
-const auth = require('../middleware/auth');
 
+const router = express.Router();
 const prisma = new PrismaClient();
 
-// Statistiques du dashboard (protégé)
-router.get('/stats', auth, async (req, res) => {
+// Middleware d'authentification
+const authenticate = require('../middleware/auth');
+
+// Statistiques dashboard
+router.get('/stats', authenticate, async (req, res) => {
   try {
+    // Récupérer les statistiques en parallèle
     const [
       totalOrders,
       pendingOrders,
       completedOrders,
-      totalClients,
-      totalProducts,
-      recentOrders,
-      monthlyRevenue
+      totalRevenue,
+      activeClients,
+      lowStockItems
     ] = await Promise.all([
-      // Total des commandes
+      // Total commandes
       prisma.order.count(),
       
       // Commandes en attente
@@ -27,42 +29,75 @@ router.get('/stats', auth, async (req, res) => {
       
       // Commandes terminées
       prisma.order.count({
-        where: { status: 'COMPLETED' }
+        where: { 
+          OR: [
+            { status: 'DELIVERED' },
+            { status: 'READY' }
+          ]
+        }
       }),
       
-      // Total clients
-      prisma.client.count(),
-      
-      // Total produits
-      prisma.product.count(),
-      
-      // Commandes récentes (7 derniers jours)
-      prisma.order.findMany({
-        where: {
-          createdAt: {
-            gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-          }
+      // Chiffre d'affaires
+      prisma.order.aggregate({
+        where: { 
+          OR: [
+            { status: 'DELIVERED' },
+            { status: 'READY' }
+          ]
         },
-        orderBy: { createdAt: 'desc' },
-        take: 5,
-        include: {
-          client: {
-            select: { name: true }
+        _sum: { totalPrice: true }
+      }),
+      
+      // Clients actifs (ont commandé dans les 30 derniers jours)
+      prisma.client.count({
+        where: {
+          orders: {
+            some: {
+              createdAt: {
+                gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+              }
+            }
           }
         }
       }),
       
-      // Revenu mensuel
-      prisma.order.aggregate({
+      // Produits en rupture de stock
+      prisma.stock.count({
         where: {
-          status: 'COMPLETED',
-          createdAt: {
-            gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+          quantity: {
+            lte: 10
           }
-        },
-        _sum: { totalAmount: true }
+        }
       })
     ]);
+
+    // Commandes récentes
+    const recentOrders = await prisma.order.findMany({
+      take: 10,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        client: {
+          select: {
+            contactName: true,
+            companyName: true
+          }
+        }
+      }
+    });
+
+    // Graphique des commandes des 30 derniers jours
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    
+    const ordersByDay = await prisma.$queryRaw`
+      SELECT 
+        DATE(createdAt) as date,
+        COUNT(*) as count,
+        SUM(totalPrice) as revenue
+      FROM orders
+      WHERE createdAt >= ${thirtyDaysAgo}
+      GROUP BY DATE(createdAt)
+      ORDER BY date ASC
+    `;
 
     res.json({
       success: true,
@@ -70,60 +105,25 @@ router.get('/stats', auth, async (req, res) => {
         totalOrders,
         pendingOrders,
         completedOrders,
-        totalClients,
-        totalProducts,
-        completionRate: totalOrders > 0 ? Math.round((completedOrders / totalOrders) * 100) : 0,
-        monthlyRevenue: monthlyRevenue._sum.totalAmount || 0
+        totalRevenue: totalRevenue._sum.totalPrice || 0,
+        activeClients,
+        lowStockItems
       },
       recentOrders: recentOrders.map(order => ({
         id: order.id,
         orderNumber: order.orderNumber,
-        clientName: order.client?.name || 'N/A',
+        client: order.client.contactName,
+        company: order.client.companyName,
+        amount: order.totalPrice,
         status: order.status,
-        totalAmount: order.totalAmount,
-        createdAt: order.createdAt
-      }))
+        date: order.createdAt
+      })),
+      chartData: ordersByDay
     });
 
   } catch (error) {
-    console.error('Dashboard stats error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la récupération des statistiques'
-    });
-  }
-});
-
-// Activités récentes
-router.get('/activities', auth, async (req, res) => {
-  try {
-    const activities = await prisma.activityLog.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 10,
-      include: {
-        user: {
-          select: { firstName: true, lastName: true }
-        }
-      }
-    });
-
-    res.json({
-      success: true,
-      activities: activities.map(activity => ({
-        id: activity.id,
-        action: activity.action,
-        details: activity.details,
-        user: activity.user ? `${activity.user.firstName} ${activity.user.lastName}` : 'System',
-        createdAt: activity.createdAt
-      }))
-    });
-
-  } catch (error) {
-    console.error('Activities error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la récupération des activités'
-    });
+    console.error('Erreur dashboard:', error);
+    res.status(500).json({ error: 'Erreur lors de la récupération des statistiques' });
   }
 });
 

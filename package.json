@@ -1,35 +1,50 @@
 {
-  "name": "bygagoos-ink",
+  "name": "bygagoos-ink-backend",
   "version": "1.0.0",
-  "description": "Application de gestion pour ByGagoos Ink",
+  "description": "API Backend pour BYGAGOOS INK - Entreprise familiale de sérigraphie",
+  "main": "app.js",
   "scripts": {
-    "dev": "concurrently \"cd backend && npm run dev\" \"cd frontend && npm run dev\"",
-    "start": "docker-compose up",
-    "start:prod": "docker-compose -f docker-compose.prod.yml up -d",
-    "stop": "docker-compose down",
-    "stop:prod": "docker-compose -f docker-compose.prod.yml down",
-    "clean": "docker system prune -f",
-    "logs": "docker-compose logs -f",
-    "logs:backend": "docker-compose logs -f backend",
-    "logs:frontend": "docker-compose logs -f frontend",
-    "db:migrate": "cd backend && npx prisma migrate deploy",
-    "db:studio": "cd backend && npx prisma studio",
-    "build": "cd frontend && npm run build",
-    "test": "cd frontend && npm run test:e2e",
-    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install"
-  },
-  "devDependencies": {
-    "concurrently": "^8.2.2"
+    "start": "node app.js",
+    "dev": "nodemon app.js",
+    "seed": "node scripts/seed-real-data.js",
+    "test": "jest --testTimeout=10000",
+    "lint": "eslint .",
+    "docker:build": "docker build -t bygagoos-backend .",
+    "docker:run": "docker run -p 5000:5000 bygagoos-backend",
+    "migrate": "npx prisma migrate dev",
+    "migrate:prod": "npx prisma migrate deploy"
   },
   "dependencies": {
-    "axios": "^1.13.2"
+    "express": "^4.18.2",
+    "mongoose": "^7.5.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "multer": "^1.4.5-lts.1",
+    "helmet": "^7.0.0",
+    "express-rate-limit": "^6.10.0",
+    "express-validator": "^7.0.1",
+    "winston": "^3.10.0",
+    "nodemailer": "^6.9.5",
+    "prisma": "^5.4.0",
+    "@prisma/client": "^5.4.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1",
+    "jest": "^29.7.0",
+    "supertest": "^6.3.3",
+    "eslint": "^8.50.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "keywords": [
+    "bygagoos",
     "serigraphie",
-    "gestion",
-    "production",
-    "bygagoos"
+    "madagascar",
+    "entreprise-familiale"
   ],
-  "author": "ByGagoos Team",
-  "license": "MIT"
+  "author": "BYGAGOOS INK Team",
+  "license": "PROPRIETARY"
 }

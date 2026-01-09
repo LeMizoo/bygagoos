@@ -1,736 +1,362 @@
-// backend/routes/orders.js
 const express = require('express');
 const router = express.Router();
-const { PrismaClient } = require('@prisma/client');
-const auth = require('../middleware/auth');
+const Order = require('../models/Order');
+const Client = require('../models/Client');
+const Product = require('../models/Product');
+const { auth, roleAuth } = require('../middleware/auth');
+const { validateOrder } = require('../middleware/validation');
+const logger = require('../utils/logger');
 
-const prisma = new PrismaClient();
-
-// Générer un numéro de commande unique
-const generateOrderNumber = async () => {
-  const date = new Date();
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const prefix = `CMD-${year}${month}`;
-  
-  const lastOrder = await prisma.order.findFirst({
-    where: {
-      orderNumber: {
-        startsWith: prefix
-      }
-    },
-    orderBy: {
-      orderNumber: 'desc'
-    }
-  });
-  
-  let sequence = 1;
-  if (lastOrder) {
-    const lastSeq = parseInt(lastOrder.orderNumber.split('-').pop());
-    if (!isNaN(lastSeq)) {
-      sequence = lastSeq + 1;
-    }
-  }
-  
-  return `${prefix}-${String(sequence).padStart(4, '0')}`;
-};
-
-// GET /api/orders - Récupérer toutes les commandes avec filtres
+// GET toutes les commandes (avec filtres)
 router.get('/', auth, async (req, res) => {
   try {
-    const {
-      status,
-      clientId,
-      priority,
-      startDate,
+    const { 
+      status, 
+      clientId, 
+      startDate, 
       endDate,
-      search,
       page = 1,
       limit = 20
     } = req.query;
 
-    const where = {};
+    const filter = {};
     
-    if (status) where.status = status;
-    if (clientId) where.clientId = parseInt(clientId);
-    if (priority) where.priority = priority;
+    // Filtre par statut
+    if (status) {
+      filter.status = status;
+    }
     
+    // Filtre par client
+    if (clientId) {
+      filter.clientId = clientId;
+    }
+    
+    // Filtre par date
     if (startDate || endDate) {
-      where.createdAt = {};
-      if (startDate) where.createdAt.gte = new Date(startDate);
-      if (endDate) where.createdAt.lte = new Date(endDate);
-    }
-    
-    if (search) {
-      where.OR = [
-        { orderNumber: { contains: search, mode: 'insensitive' } },
-        { notes: { contains: search, mode: 'insensitive' } },
-        {
-          client: {
-            OR: [
-              { name: { contains: search, mode: 'insensitive' } },
-              { company: { contains: search, mode: 'insensitive' } },
-              { email: { contains: search, mode: 'insensitive' } }
-            ]
-          }
-        }
-      ];
+      filter.orderDate = {};
+      if (startDate) filter.orderDate.$gte = new Date(startDate);
+      if (endDate) filter.orderDate.$lte = new Date(endDate);
     }
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    
-    const [orders, total] = await Promise.all([
-      prisma.order.findMany({
-        where,
-        include: {
-          client: {
-            select: {
-              id: true,
-              name: true,
-              company: true,
-              email: true,
-              phone: true
-            }
-          },
-          orderItems: {
-            include: {
-              product: {
-                select: {
-                  id: true,
-                  name: true,
-                  category: true
-                }
-              }
-            }
-          },
-          tasks: {
-            select: {
-              id: true,
-              name: true,
-              status: true,
-              assignedTo: {
-                select: {
-                  id: true,
-                  firstName: true,
-                  lastName: true
-                }
-              }
-            }
-          }
-        },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: parseInt(limit)
-      }),
-      prisma.order.count({ where })
-    ]);
+    // Pagination
+    const skip = (page - 1) * limit;
 
-    // Calculer les statistiques
-    const stats = {
-      total,
-      pending: await prisma.order.count({ where: { status: 'PENDING' } }),
-      inProgress: await prisma.order.count({ where: { status: 'IN_PROGRESS' } }),
-      completed: await prisma.order.count({ where: { status: 'COMPLETED' } }),
-      delivered: await prisma.order.count({ where: { status: 'DELIVERED' } }),
-      cancelled: await prisma.order.count({ where: { status: 'CANCELLED' } }),
-      totalRevenue: await prisma.order.aggregate({
-        where: { status: { not: 'CANCELLED' } },
-        _sum: { totalAmount: true }
-      })
-    };
+    const orders = await Order.find(filter)
+      .populate('client', 'companyName contactName phone')
+      .populate('user', 'firstName lastName')
+      .sort({ orderDate: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await Order.countDocuments(filter);
 
     res.json({
       success: true,
       data: orders,
       pagination: {
-        total,
         page: parseInt(page),
         limit: parseInt(limit),
-        pages: Math.ceil(total / parseInt(limit))
-      },
-      stats
+        total,
+        pages: Math.ceil(total / limit)
+      }
     });
-
   } catch (error) {
-    console.error('Get orders error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la récupération des commandes'
+    logger.error(`Erreur récupération commandes: ${error.message}`);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Erreur serveur' 
     });
   }
 });
 
-// GET /api/orders/stats - Statistiques des commandes
-router.get('/stats', auth, async (req, res) => {
-  try {
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
-
-    const [
-      totalOrders,
-      totalRevenue,
-      thisMonthOrders,
-      thisMonthRevenue,
-      lastMonthOrders,
-      lastMonthRevenue,
-      ordersByStatus
-    ] = await Promise.all([
-      // Total des commandes
-      prisma.order.count({
-        where: { status: { not: 'CANCELLED' } }
-      }),
-      
-      // Total revenue
-      prisma.order.aggregate({
-        where: { status: { not: 'CANCELLED' } },
-        _sum: { totalAmount: true }
-      }),
-      
-      // Commandes ce mois
-      prisma.order.count({
-        where: {
-          status: { not: 'CANCELLED' },
-          createdAt: { gte: startOfMonth }
-        }
-      }),
-      
-      // Revenue ce mois
-      prisma.order.aggregate({
-        where: {
-          status: { not: 'CANCELLED' },
-          createdAt: { gte: startOfMonth }
-        },
-        _sum: { totalAmount: true }
-      }),
-      
-      // Commandes mois dernier
-      prisma.order.count({
-        where: {
-          status: { not: 'CANCELLED' },
-          createdAt: { gte: startOfLastMonth, lte: endOfLastMonth }
-        }
-      }),
-      
-      // Revenue mois dernier
-      prisma.order.aggregate({
-        where: {
-          status: { not: 'CANCELLED' },
-          createdAt: { gte: startOfLastMonth, lte: endOfLastMonth }
-        },
-        _sum: { totalAmount: true }
-      }),
-      
-      // Commandes par statut
-      prisma.order.groupBy({
-        by: ['status'],
-        _count: true
-      })
-    ]);
-
-    // Calculer la croissance
-    const growthRate = lastMonthOrders > 0 
-      ? ((thisMonthOrders - lastMonthOrders) / lastMonthOrders) * 100 
-      : 0;
-
-    res.json({
-      success: true,
-      data: {
-        totalOrders,
-        totalRevenue: totalRevenue._sum.totalAmount || 0,
-        thisMonth: {
-          orders: thisMonthOrders,
-          revenue: thisMonthRevenue._sum.totalAmount || 0
-        },
-        lastMonth: {
-          orders: lastMonthOrders,
-          revenue: lastMonthRevenue._sum.totalAmount || 0
-        },
-        growthRate: parseFloat(growthRate.toFixed(2)),
-        byStatus: ordersByStatus
-      }
-    });
-
-  } catch (error) {
-    console.error('Get orders stats error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la récupération des statistiques'
-    });
-  }
-});
-
-// POST /api/orders - Créer une nouvelle commande
-router.post('/', auth, async (req, res) => {
-  try {
-    const {
-      clientId,
-      items,
-      notes,
-      status = 'PENDING',
-      deliveryDate,
-      deadline,
-      priority = 'MEDIUM'
-    } = req.body;
-
-    // Vérifier le client
-    const client = await prisma.client.findUnique({
-      where: { id: parseInt(clientId) }
-    });
-
-    if (!client) {
-      return res.status(404).json({
-        success: false,
-        message: 'Client non trouvé'
-      });
-    }
-
-    // Vérifier les produits et calculer le total
-    let totalAmount = 0;
-    for (const item of items) {
-      const product = await prisma.product.findUnique({
-        where: { id: parseInt(item.productId) }
-      });
-
-      if (!product) {
-        return res.status(404).json({
-          success: false,
-          message: `Produit non trouvé: ${item.productId}`
-        });
-      }
-
-      if (product.stock < item.quantity) {
-        return res.status(400).json({
-          success: false,
-          message: `Stock insuffisant pour ${product.name}. Disponible: ${product.stock}, Demandé: ${item.quantity}`
-        });
-      }
-
-      totalAmount += product.price * item.quantity;
-    }
-
-    // Générer le numéro de commande
-    const orderNumber = await generateOrderNumber();
-
-    // Créer la commande avec transaction
-    const order = await prisma.$transaction(async (tx) => {
-      // Créer la commande
-      const newOrder = await tx.order.create({
-        data: {
-          orderNumber,
-          clientId: parseInt(clientId),
-          totalAmount,
-          notes,
-          status,
-          priority,
-          deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
-          deadline: deadline ? new Date(deadline) : null
-        }
-      });
-
-      // Ajouter les items et mettre à jour le stock
-      for (const item of items) {
-        const product = await tx.product.findUnique({
-          where: { id: parseInt(item.productId) }
-        });
-
-        await tx.orderItem.create({
-          data: {
-            orderId: newOrder.id,
-            productId: parseInt(item.productId),
-            quantity: item.quantity,
-            price: product.price,
-            notes: item.notes
-          }
-        });
-
-        // Mettre à jour le stock
-        await tx.product.update({
-          where: { id: parseInt(item.productId) },
-          data: {
-            stock: product.stock - item.quantity
-          }
-        });
-      }
-
-      // Créer les tâches de production par défaut
-      const defaultTasks = [
-        { type: 'DESIGN', name: 'Conception graphique' },
-        { type: 'SCREEN_PREPARATION', name: 'Préparation des écrans' },
-        { type: 'PRINTING', name: 'Impression sérigraphie' },
-        { type: 'DRYING', name: 'Séchage' },
-        { type: 'QUALITY_CHECK', name: 'Contrôle qualité' },
-        { type: 'PACKAGING', name: 'Emballage' }
-      ];
-
-      for (const task of defaultTasks) {
-        await tx.task.create({
-          data: {
-            orderId: newOrder.id,
-            type: task.type,
-            name: task.name,
-            status: 'PENDING'
-          }
-        });
-      }
-
-      return newOrder;
-    });
-
-    // Log d'activité
-    await prisma.activityLog.create({
-      data: {
-        userId: req.user.id,
-        action: 'CREATE_ORDER',
-        details: `Commande créée: ${order.orderNumber} pour ${client.name}`,
-        ipAddress: req.ip
-      }
-    });
-
-    res.status(201).json({
-      success: true,
-      message: 'Commande créée avec succès',
-      data: order
-    });
-
-  } catch (error) {
-    console.error('Create order error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la création de la commande'
-    });
-  }
-});
-
-// GET /api/orders/:id - Récupérer une commande spécifique
+// GET une commande spécifique
 router.get('/:id', auth, async (req, res) => {
   try {
-    const orderId = parseInt(req.params.id);
-    
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
-      include: {
-        client: true,
-        orderItems: {
-          include: {
-            product: true
-          }
-        },
-        tasks: {
-          include: {
-            assignedTo: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                email: true
-              }
-            }
-          },
-          orderBy: {
-            createdAt: 'asc'
-          }
+    const order = await Order.findById(req.params.id)
+      .populate('client')
+      .populate('user', 'firstName lastName email phone')
+      .populate({
+        path: 'items',
+        populate: {
+          path: 'product',
+          select: 'name description basePrice'
         }
-      }
-    });
+      });
 
     if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: 'Commande non trouvée'
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Commande non trouvée' 
       });
     }
 
-    res.json({
-      success: true,
-      data: order
-    });
+    // Vérifier les permissions
+    if (req.user.role === 'client' && order.client._id.toString() !== req.user.clientId) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Accès non autorisé' 
+      });
+    }
 
+    res.json({ success: true, data: order });
   } catch (error) {
-    console.error('Get order error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la récupération de la commande'
+    logger.error(`Erreur récupération commande ${req.params.id}: ${error.message}`);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Erreur serveur' 
     });
   }
 });
 
-// PUT /api/orders/:id - Mettre à jour une commande
-router.put('/:id', auth, async (req, res) => {
+// POST créer une nouvelle commande
+router.post('/', auth, validateOrder, async (req, res) => {
   try {
-    const orderId = parseInt(req.params.id);
-    const { status, notes, deliveryDate, deadline, priority } = req.body;
-
-    // Vérifier que la commande existe
-    const existingOrder = await prisma.order.findUnique({
-      where: { id: orderId }
-    });
-
-    if (!existingOrder) {
-      return res.status(404).json({
-        success: false,
-        message: 'Commande non trouvée'
+    const { clientId, items, deliveryDate, notes, priority } = req.body;
+    
+    // Vérifier le client
+    const client = await Client.findById(clientId);
+    if (!client) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Client non trouvé' 
       });
     }
 
-    const order = await prisma.order.update({
-      where: { id: orderId },
-      data: {
-        status,
-        notes,
-        deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
-        deadline: deadline ? new Date(deadline) : null,
-        priority,
-        updatedAt: new Date()
-      }
-    });
+    // Calculer le total
+    let totalAmount = 0;
+    const orderItems = [];
 
-    // Si le statut passe à IN_PROGRESS, mettre à jour les tâches
-    if (status === 'IN_PROGRESS' && existingOrder.status !== 'IN_PROGRESS') {
-      await prisma.task.updateMany({
-        where: { orderId: orderId, status: 'PENDING' },
-        data: { status: 'IN_PROGRESS' }
-      });
-    }
-
-    // Log d'activité
-    await prisma.activityLog.create({
-      data: {
-        userId: req.user.id,
-        action: 'UPDATE_ORDER',
-        details: `Commande ${order.orderNumber} mise à jour. Statut: ${status}`,
-        ipAddress: req.ip
-      }
-    });
-
-    res.json({
-      success: true,
-      message: 'Commande mise à jour avec succès',
-      data: order
-    });
-
-  } catch (error) {
-    console.error('Update order error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la mise à jour de la commande'
-    });
-  }
-});
-
-// DELETE /api/orders/:id - Supprimer une commande
-router.delete('/:id', auth, async (req, res) => {
-  try {
-    const orderId = parseInt(req.params.id);
-
-    const order = await prisma.order.findUnique({
-      where: { id: orderId }
-    });
-
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: 'Commande non trouvée'
-      });
-    }
-
-    // Seules les commandes PENDING ou CANCELLED peuvent être supprimées
-    if (!['PENDING', 'CANCELLED'].includes(order.status)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Seules les commandes en attente ou annulées peuvent être supprimées'
-      });
-    }
-
-    // Supprimer avec transaction
-    await prisma.$transaction(async (tx) => {
-      // Récupérer et restaurer le stock
-      const orderItems = await tx.orderItem.findMany({
-        where: { orderId: orderId },
-        include: { product: true }
-      });
-
-      for (const item of orderItems) {
-        await tx.product.update({
-          where: { id: item.productId },
-          data: {
-            stock: item.product.stock + item.quantity
-          }
+    for (const item of items) {
+      const product = await Product.findById(item.productId);
+      if (!product || !product.isActive) {
+        return res.status(400).json({ 
+          success: false, 
+          message: `Produit ${item.productId} non disponible` 
         });
       }
 
-      // Supprimer les items
-      await tx.orderItem.deleteMany({
-        where: { orderId: orderId }
-      });
+      if (item.quantity < product.minQuantity) {
+        return res.status(400).json({ 
+          success: false, 
+          message: `Quantité minimum pour ${product.name}: ${product.minQuantity}` 
+        });
+      }
 
-      // Supprimer les tâches
-      await tx.task.deleteMany({
-        where: { orderId: orderId }
-      });
+      const itemTotal = item.quantity * item.unitPrice;
+      totalAmount += itemTotal;
 
-      // Supprimer la commande
-      await tx.order.delete({
-        where: { id: orderId }
+      orderItems.push({
+        productId: product._id,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        totalPrice: itemTotal,
+        color: item.color,
+        size: item.size,
+        notes: item.notes
       });
-    });
+    }
 
-    // Log d'activité
-    await prisma.activityLog.create({
-      data: {
-        userId: req.user.id,
-        action: 'DELETE_ORDER',
-        details: `Commande supprimée: ${order.orderNumber}`,
-        ipAddress: req.ip
+    // Générer numéro de commande
+    const today = new Date();
+    const year = today.getFullYear().toString().slice(-2);
+    const month = (today.getMonth() + 1).toString().padStart(2, '0');
+    const count = await Order.countDocuments({
+      orderDate: {
+        $gte: new Date(today.getFullYear(), today.getMonth(), 1),
+        $lt: new Date(today.getFullYear(), today.getMonth() + 1, 1)
       }
     });
+    const orderNumber = `CMD-${year}${month}-${(count + 1).toString().padStart(4, '0')}`;
 
-    res.json({
-      success: true,
-      message: 'Commande supprimée avec succès'
+    // Créer la commande
+    const order = new Order({
+      orderNumber,
+      clientId,
+      userId: req.user._id,
+      status: 'pending',
+      priority: priority || 'normal',
+      items: orderItems,
+      totalAmount,
+      deposit: 0,
+      balance: totalAmount,
+      deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
+      notes,
+      orderDate: today
     });
 
+    await order.save();
+
+    // Populer pour la réponse
+    const populatedOrder = await Order.findById(order._id)
+      .populate('client')
+      .populate('user', 'firstName lastName');
+
+    logger.info(`Nouvelle commande créée: ${orderNumber} par ${req.user.email}`);
+    
+    res.status(201).json({ 
+      success: true, 
+      message: 'Commande créée avec succès',
+      data: populatedOrder 
+    });
   } catch (error) {
-    console.error('Delete order error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la suppression de la commande'
+    logger.error(`Erreur création commande: ${error.message}`);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Erreur création commande' 
     });
   }
 });
 
-// GET /api/orders/:id/tasks - Tâches de production d'une commande
-router.get('/:id/tasks', auth, async (req, res) => {
+// PUT mettre à jour une commande
+router.put('/:id', auth, roleAuth('admin', 'manager'), async (req, res) => {
   try {
-    const orderId = parseInt(req.params.id);
+    const { status, deposit, notes, priority } = req.body;
+    
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Commande non trouvée' 
+      });
+    }
 
-    const tasks = await prisma.task.findMany({
-      where: { orderId: orderId },
-      include: {
-        assignedTo: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true
-          }
+    // Mettre à jour les champs autorisés
+    const updates = {};
+    if (status && order.status !== 'cancelled') {
+      updates.status = status;
+      if (status === 'delivered') {
+        updates.completedAt = new Date();
+      }
+    }
+    
+    if (deposit !== undefined) {
+      updates.deposit = parseFloat(deposit);
+      updates.balance = order.totalAmount - updates.deposit;
+    }
+    
+    if (notes !== undefined) updates.notes = notes;
+    if (priority) updates.priority = priority;
+
+    const updatedOrder = await Order.findByIdAndUpdate(
+      req.params.id,
+      { $set: updates },
+      { new: true, runValidators: true }
+    ).populate('client').populate('user', 'firstName lastName');
+
+    logger.info(`Commande ${order.orderNumber} mise à jour par ${req.user.email}`);
+
+    res.json({ 
+      success: true, 
+      message: 'Commande mise à jour',
+      data: updatedOrder 
+    });
+  } catch (error) {
+    logger.error(`Erreur mise à jour commande: ${error.message}`);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Erreur mise à jour commande' 
+    });
+  }
+});
+
+// DELETE annuler une commande
+router.delete('/:id', auth, roleAuth('admin'), async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    
+    if (!order) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Commande non trouvée' 
+      });
+    }
+
+    // Vérifier si la commande peut être annulée
+    if (order.status === 'delivered' || order.status === 'in_production') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Impossible d\'annuler une commande en production ou livrée' 
+      });
+    }
+
+    order.status = 'cancelled';
+    await order.save();
+
+    logger.info(`Commande ${order.orderNumber} annulée par ${req.user.email}`);
+
+    res.json({ 
+      success: true, 
+      message: 'Commande annulée' 
+    });
+  } catch (error) {
+    logger.error(`Erreur annulation commande: ${error.message}`);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Erreur annulation commande' 
+    });
+  }
+});
+
+// GET statistiques commandes
+router.get('/stats/dashboard', auth, async (req, res) => {
+  try {
+    const today = new Date();
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const startOfYear = new Date(today.getFullYear(), 0, 1);
+
+    // Commandes du mois
+    const monthlyOrders = await Order.countDocuments({
+      orderDate: { $gte: startOfMonth }
+    });
+
+    // Chiffre d'affaires du mois
+    const monthlyRevenue = await Order.aggregate([
+      {
+        $match: {
+          orderDate: { $gte: startOfMonth },
+          status: { $ne: 'cancelled' }
         }
       },
-      orderBy: {
-        createdAt: 'asc'
+      {
+        $group: {
+          _id: null,
+          total: { $sum: '$totalAmount' },
+          received: { $sum: '$deposit' }
+        }
       }
+    ]);
+
+    // Commandes par statut
+    const ordersByStatus = await Order.aggregate([
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    // Commandes urgentes
+    const urgentOrders = await Order.countDocuments({
+      priority: 'urgent',
+      status: { $in: ['pending', 'confirmed', 'in_production'] }
     });
 
     res.json({
       success: true,
-      data: tasks
-    });
-
-  } catch (error) {
-    console.error('Get order tasks error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la récupération des tâches'
-    });
-  }
-});
-
-// POST /api/orders/:id/items - Ajouter un article à une commande
-router.post('/:id/items', auth, async (req, res) => {
-  try {
-    const orderId = parseInt(req.params.id);
-    const { productId, quantity, notes } = req.body;
-
-    // Vérifier la commande
-    const order = await prisma.order.findUnique({
-      where: { id: orderId }
-    });
-
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: 'Commande non trouvée'
-      });
-    }
-
-    // Vérifier le produit
-    const product = await prisma.product.findUnique({
-      where: { id: parseInt(productId) }
-    });
-
-    if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: 'Produit non trouvé'
-      });
-    }
-
-    if (product.stock < quantity) {
-      return res.status(400).json({
-        success: false,
-        message: `Stock insuffisant. Disponible: ${product.stock}`
-      });
-    }
-
-    // Ajouter l'article
-    const orderItem = await prisma.$transaction(async (tx) => {
-      const item = await tx.orderItem.create({
-        data: {
-          orderId: orderId,
-          productId: parseInt(productId),
-          quantity: quantity,
-          price: product.price,
-          notes: notes
-        }
-      });
-
-      // Mettre à jour le stock
-      await tx.product.update({
-        where: { id: parseInt(productId) },
-        data: {
-          stock: product.stock - quantity
-        }
-      });
-
-      // Recalculer le total
-      const items = await tx.orderItem.findMany({
-        where: { orderId: orderId }
-      });
-
-      const totalAmount = items.reduce((sum, item) => {
-        return sum + (item.price * item.quantity);
-      }, 0);
-
-      await tx.order.update({
-        where: { id: orderId },
-        data: { totalAmount: totalAmount }
-      });
-
-      return item;
-    });
-
-    // Log d'activité
-    await prisma.activityLog.create({
       data: {
-        userId: req.user.id,
-        action: 'ADD_ORDER_ITEM',
-        details: `Article ajouté à la commande ${order.orderNumber}: ${product.name} x${quantity}`,
-        ipAddress: req.ip
+        monthlyOrders,
+        monthlyRevenue: monthlyRevenue[0] || { total: 0, received: 0 },
+        ordersByStatus,
+        urgentOrders,
+        pendingOrders: await Order.countDocuments({ status: 'pending' })
       }
     });
-
-    res.status(201).json({
-      success: true,
-      message: 'Article ajouté avec succès',
-      data: orderItem
-    });
-
   } catch (error) {
-    console.error('Add order item error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de l\'ajout de l\'article'
+    logger.error(`Erreur statistiques: ${error.message}`);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Erreur récupération statistiques' 
     });
   }
 });

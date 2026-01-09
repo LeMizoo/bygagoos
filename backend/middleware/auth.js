@@ -1,47 +1,119 @@
 const jwt = require('jsonwebtoken');
-const { PrismaClient } = require('@prisma/client');
+const User = require('../models/User');
+const logger = require('../utils/logger');
 
-const prisma = new PrismaClient();
-const JWT_SECRET = process.env.JWT_SECRET || 'default_secret_change_in_production';
-
+// Middleware d'authentification
 const auth = async (req, res, next) => {
   try {
-    const token = req.header('Authorization')?.replace('Bearer ', '');
+    // Récupérer le token depuis le header
+    const authHeader = req.header('Authorization');
     
-    if (!token) {
-      throw new Error();
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Accès refusé. Token manquant.' 
+      });
     }
 
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const token = authHeader.replace('Bearer ', '');
     
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.id },
-      select: {
-        id: true,
-        username: true,
-        firstName: true,
-        lastName: true,
-        email: true,
-        role: true,
-        familyId: true,
-        profileImage: true
-      }
-    });
-
+    // Vérifier le token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    
+    // Chercher l'utilisateur
+    const user = await User.findById(decoded.userId).select('-password');
+    
     if (!user) {
-      throw new Error();
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Utilisateur non trouvé.' 
+      });
     }
 
+    if (!user.isActive) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Compte désactivé. Contactez l\'administrateur.' 
+      });
+    }
+
+    // Ajouter l'utilisateur à la requête
     req.user = user;
     req.token = token;
-    next();
     
+    logger.info(`Authentification réussie - User: ${user.email}, Role: ${user.role}`);
+    next();
   } catch (error) {
-    res.status(401).json({
-      success: false,
-      message: 'Veuillez vous authentifier'
+    logger.error(`Erreur d'authentification: ${error.message}`);
+    
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Token invalide.' 
+      });
+    }
+    
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Token expiré. Veuillez vous reconnecter.' 
+      });
+    }
+    
+    res.status(500).json({ 
+      success: false, 
+      message: 'Erreur serveur d\'authentification.' 
     });
   }
 };
 
-module.exports = auth;
+// Middleware de rôles
+const roleAuth = (...roles) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Non authentifié.' 
+      });
+    }
+
+    if (!roles.includes(req.user.role)) {
+      logger.warn(`Tentative d'accès non autorisé - User: ${req.user.email}, Role: ${req.user.role}, Required: ${roles}`);
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Accès interdit. Droits insuffisants.' 
+      });
+    }
+
+    next();
+  };
+};
+
+// Middleware pour propriétaire ou admin
+const ownerOrAdmin = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({ 
+      success: false, 
+      message: 'Non authentifié.' 
+    });
+  }
+
+  // Admins peuvent tout faire
+  if (req.user.role === 'admin') {
+    return next();
+  }
+
+  // Vérifier si l'utilisateur est le propriétaire
+  const resourceId = req.params.id || req.body.userId;
+  
+  if (req.user._id.toString() !== resourceId) {
+    return res.status(403).json({ 
+      success: false, 
+      message: 'Vous ne pouvez modifier que vos propres données.' 
+    });
+  }
+
+  next();
+};
+
+module.exports = { auth, roleAuth, ownerOrAdmin };

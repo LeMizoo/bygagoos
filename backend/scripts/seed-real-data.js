@@ -1,187 +1,128 @@
+// backend/scripts/seed-real-data.js
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
-const fs = require('fs');
-const path = require('path');
 
 const prisma = new PrismaClient();
 
-async function seed() {
-  console.log('🌱 Début du seeding avec données réelles...');
+async function main() {
+  console.log('🌱 Début du seeding de données réelles...');
 
-  try {
-    // Nettoyer la base de données
-    await prisma.activityLog.deleteMany();
+  // 1. Nettoyer la base (optionnel - attention en production)
+  if (process.env.NODE_ENV === 'development') {
+    console.log('🧹 Nettoyage des tables...');
+    await prisma.productionLog.deleteMany();
+    await prisma.payment.deleteMany();
     await prisma.orderItem.deleteMany();
     await prisma.order.deleteMany();
     await prisma.client.deleteMany();
-    await prisma.product.deleteMany();
+    await prisma.stock.deleteMany();
     await prisma.consumable.deleteMany();
+    await prisma.product.deleteMany();
     await prisma.user.deleteMany();
-
-    console.log('🗑️  Base de données nettoyée');
-
-    // Créer les utilisateurs
-    const users = [
-      {
-        username: 'admin',
-        password: await bcrypt.hash('admin123', 10),
-        firstName: 'Admin',
-        lastName: 'System',
-        email: 'admin@bygagoos.mg',
-        role: 'ADMIN'
-      },
-      {
-        username: 'marcel',
-        password: await bcrypt.hash('marcel123', 10),
-        firstName: 'Marcel',
-        lastName: 'Rakoto',
-        email: 'marcel@bygagoos.mg',
-        role: 'MANAGER'
-      },
-      {
-        username: 'miantsatiana',
-        password: await bcrypt.hash('miantsatiana123', 10),
-        firstName: 'Miantsatiana',
-        lastName: 'Rasoa',
-        email: 'miantsatiana@bygagoos.mg',
-        role: 'USER'
-      }
-    ];
-
-    for (const userData of users) {
-      await prisma.user.create({ data: userData });
-    }
-
-    console.log(`👥 ${users.length} utilisateurs créés`);
-
-    // Créer les clients
-    const clients = [
-      {
-        name: 'Tech Solutions SARL',
-        email: 'contact@techsolutions.mg',
-        phone: '+261 34 12 345 67',
-        address: 'Lotissement Ivandry, Antananarivo 101',
-        company: 'Tech Solutions SARL',
-        notes: 'Client régulier, paiement à 30 jours'
-      },
-      {
-        name: 'Epicerie du Coin',
-        email: 'contact@epicerie.mg',
-        phone: '+261 33 11 223 44',
-        address: 'Rue Radama, Analakely',
-        company: 'Epicerie du Coin',
-        notes: 'Petite entreprise, paiement comptant'
-      },
-      {
-        name: 'Boutique Fashion',
-        email: 'info@fashion.mg',
-        phone: '+261 32 55 667 78',
-        address: 'Immeuble Colbert, Behoririka',
-        company: 'Fashion Boutique',
-        notes: 'Commandes saisonnières'
-      }
-    ];
-
-    for (const clientData of clients) {
-      await prisma.client.create({ data: clientData });
-    }
-
-    console.log(`👥 ${clients.length} clients créés`);
-
-    // Créer les produits
-    const products = [
-      {
-        name: 'T-shirt Blanc Premium',
-        description: 'T-shirt 100% coton, qualité supérieure',
-        price: 18000.00,
-        category: 'Vêtements',
-        stock: 150,
-        minStock: 25
-      },
-      {
-        name: 'Sweat-shirt Capuche',
-        description: 'Sweat-shirt avec capuche, mix coton/polyester',
-        price: 45000.00,
-        category: 'Vêtements',
-        stock: 75,
-        minStock: 15
-      },
-      {
-        name: 'Casquette Brodée',
-        description: 'Casquette ajustable avec logo brodé haute qualité',
-        price: 15000.00,
-        category: 'Accessoires',
-        stock: 200,
-        minStock: 30
-      }
-    ];
-
-    for (const productData of products) {
-      await prisma.product.create({ data: productData });
-    }
-
-    console.log(`📦 ${products.length} produits créés`);
-
-    // Créer les commandes
-    const allClients = await prisma.client.findMany();
-    const allProducts = await prisma.product.findMany();
-
-    const orders = [];
-    for (let i = 1; i <= 10; i++) {
-      const client = allClients[Math.floor(Math.random() * allClients.length)];
-      const orderDate = new Date();
-      orderDate.setDate(orderDate.getDate() - Math.floor(Math.random() * 60));
-
-      const order = await prisma.order.create({
-        data: {
-          orderNumber: `CMD-${new Date().getFullYear()}-${String(i).padStart(4, '0')}`,
-          clientId: client.id,
-          totalAmount: 0,
-          status: ['PENDING', 'IN_PROGRESS', 'COMPLETED'][Math.floor(Math.random() * 3)],
-          deliveryDate: new Date(orderDate.getTime() + 7 * 24 * 60 * 60 * 1000)
-        }
-      });
-
-      // Ajouter des items
-      const numItems = Math.floor(Math.random() * 2) + 1;
-      let totalAmount = 0;
-
-      for (let j = 0; j < numItems; j++) {
-        const product = allProducts[Math.floor(Math.random() * allProducts.length)];
-        const quantity = Math.floor(Math.random() * 5) + 1;
-
-        await prisma.orderItem.create({
-          data: {
-            orderId: order.id,
-            productId: product.id,
-            quantity,
-            price: product.price
-          }
-        });
-
-        totalAmount += product.price * quantity;
-      }
-
-      // Mettre à jour le total
-      await prisma.order.update({
-        where: { id: order.id },
-        data: { totalAmount }
-      });
-
-      orders.push(order);
-    }
-
-    console.log(`📝 ${orders.length} commandes créées`);
-
-    console.log('✅ Seeding terminé avec succès !');
-
-  } catch (error) {
-    console.error('❌ Erreur lors du seeding:', error);
-    throw error;
-  } finally {
-    await prisma.$disconnect();
   }
+
+  // 2. Créer l'admin principal
+  const hashedPassword = await bcrypt.hash('Admin123!', 10);
+  
+  const adminUser = await prisma.user.upsert({
+    where: { email: 'admin@bygagoos.mg' },
+    update: {},
+    create: {
+      email: 'admin@bygagoos.mg',
+      password: hashedPassword,
+      firstName: 'Admin',
+      lastName: 'BYGAGOOS',
+      phone: '+261 34 43 593 30',
+      role: 'ADMIN',
+      company: 'BYGAGOOS INK',
+      businessType: 'serigraphie',
+      isActive: true,
+      verified: true,
+    },
+  });
+
+  console.log('✅ Admin créé:', adminUser.email);
+
+  // 3. Créer quelques produits de base
+  const products = [
+    {
+      name: 'T-shirt Blanc Standard',
+      description: 'T-shirt 100% coton, qualité standard',
+      category: 't-shirts',
+      basePrice: 15000,
+      colors: ['Blanc', 'Noir', 'Rouge', 'Bleu'],
+      sizes: ['S', 'M', 'L', 'XL', 'XXL'],
+    },
+    {
+      name: 'T-shirt Premium',
+      description: 'T-shirt 100% coton, qualité premium',
+      category: 't-shirts',
+      basePrice: 25000,
+      colors: ['Blanc', 'Noir', 'Gris'],
+      sizes: ['M', 'L', 'XL'],
+    },
+    {
+      name: 'Sweat-shirt',
+      description: 'Sweat-shirt à capuche',
+      category: 'sweats',
+      basePrice: 45000,
+      colors: ['Gris', 'Noir', 'Bordeaux'],
+      sizes: ['S', 'M', 'L', 'XL'],
+    },
+    {
+      name: 'Casquette',
+      description: 'Casquette plate',
+      category: 'accessoires',
+      basePrice: 12000,
+      colors: ['Noir', 'Bleu', 'Rouge'],
+      sizes: ['Taille unique'],
+    },
+  ];
+
+  for (const productData of products) {
+    const product = await prisma.product.create({
+      data: {
+        ...productData,
+        isActive: true,
+      },
+    });
+
+    // Créer le stock pour ce produit
+    await prisma.stock.create({
+      data: {
+        productId: product.id,
+        quantity: 100,
+        minStock: 20,
+      },
+    });
+
+    console.log(`✅ Produit créé: ${product.name}`);
+  }
+
+  // 4. Créer quelques consommables
+  const consumables = [
+    { name: 'Encre Blanche', category: 'encres', quantity: 50, unit: 'kg', minStock: 10 },
+    { name: 'Encre Noire', category: 'encres', quantity: 40, unit: 'kg', minStock: 10 },
+    { name: 'Cadre 40x40', category: 'cadres', quantity: 15, unit: 'pièce', minStock: 5 },
+    { name: 'Émulsion', category: 'chimie', quantity: 25, unit: 'L', minStock: 5 },
+    { name: 'Séchoir UV', category: 'équipement', quantity: 2, unit: 'pièce', minStock: 1 },
+  ];
+
+  for (const consumable of consumables) {
+    await prisma.consumable.create({
+      data: consumable,
+    });
+    console.log(`✅ Consommable créé: ${consumable.name}`);
+  }
+
+  console.log('🌱 Seeding terminé avec succès !');
 }
 
-// Exécuter le seeding
-seed().catch(console.error);
+main()
+  .catch((e) => {
+    console.error('❌ Erreur lors du seeding:', e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
