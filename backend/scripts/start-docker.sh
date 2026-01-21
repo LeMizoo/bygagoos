@@ -43,7 +43,7 @@ done
 
 # Vérifier la santé de l'API
 echo "🌐 Vérification de l'API..."
-API_HEALTH=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/api/health || echo "000")
+API_HEALTH=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3002/api/health || echo "000")
 
 if [ "$API_HEALTH" = "200" ]; then
     echo "✅ API est fonctionnelle"
@@ -55,8 +55,8 @@ echo ""
 echo "🎉 Démarrage terminé !"
 echo "====================="
 echo "Frontend:  http://localhost:5173"
-echo "Backend:   http://localhost:3001"
-echo "API Health: http://localhost:3001/api/health"
+echo "Backend:   http://localhost:3002"
+
 echo "PostgreSQL: localhost:5432"
 echo ""
 echo "📝 Commandes utiles:"

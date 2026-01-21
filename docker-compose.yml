@@ -1,62 +1,27 @@
 version: '3.8'
 
 services:
-  postgres:
-    image: postgres:15-alpine
-    container_name: bygagoos_db_dev
-    environment:
-      POSTGRES_DB: bygagoos
-      POSTGRES_USER: bygagoos_user
-      POSTGRES_PASSWORD: changeme123
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data_dev:/var/lib/postgresql/data
-    networks:
-      - bygagoos_network
-
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: bygagoos_backend_dev
-    environment:
-      NODE_ENV: development
-      DATABASE_URL: postgresql://bygagoos_user:changeme123@postgres:5432/bygagoos
-      JWT_SECRET: dev_jwt_secret_2024
-      PORT: 3001
+    build: ./backend
     ports:
-      - "3001:3001"
+      - "5000:5000"
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=file:/app/dev.db
     volumes:
       - ./backend:/app
-      - /app/node_modules
-    depends_on:
-      - postgres
-    networks:
-      - bygagoos_network
-    command: npm run dev
+      - sqlite-data:/app/data
+    command: sh -c "npx prisma migrate deploy && npm start"
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: bygagoos_frontend_dev
-    environment:
-      VITE_API_URL: http://localhost:3001/api
+    build: ./frontend
     ports:
-      - "5173:5173"
+      - "3000:3000"
     volumes:
       - ./frontend:/app
       - /app/node_modules
     depends_on:
       - backend
-    networks:
-      - bygagoos_network
-    command: npm run dev
-
-networks:
-  bygagoos_network:
-    driver: bridge
 
 volumes:
-  postgres_data_dev:
+  sqlite-data:

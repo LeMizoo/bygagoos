@@ -8,13 +8,13 @@ const auth = {
     const salt = await bcrypt.genSalt(10);
     return await bcrypt.hash(password, salt);
   },
-  
-  // Vérifier un mot de passe
+
+  // Verifier un mot de passe
   comparePassword: async (password, hashedPassword) => {
     return await bcrypt.compare(password, hashedPassword);
   },
-  
-  // Générer un token JWT
+
+  // Generer un token JWT
   generateToken: (userId, role, expiresIn = '24h') => {
     return jwt.sign(
       { userId, role },
@@ -22,8 +22,8 @@ const auth = {
       { expiresIn }
     );
   },
-  
-  // Générer un refresh token
+
+  // Generer un refresh token
   generateRefreshToken: (userId) => {
     return jwt.sign(
       { userId },
@@ -31,8 +31,8 @@ const auth = {
       { expiresIn: '7d' }
     );
   },
-  
-  // Vérifier un token JWT
+
+  // Verifier un token JWT
   verifyToken: (token) => {
     try {
       return jwt.verify(token, process.env.JWT_SECRET);
@@ -41,8 +41,8 @@ const auth = {
       return null;
     }
   },
-  
-  // Vérifier un refresh token
+
+  // Verifier un refresh token
   verifyRefreshToken: (token) => {
     try {
       return jwt.verify(token, process.env.JWT_REFRESH_SECRET);
@@ -51,18 +51,18 @@ const auth = {
       return null;
     }
   },
-  
+
   // Middleware d'authentification
   authenticate: (req, res, next) => {
     const token = req.header('Authorization')?.replace('Bearer ', '');
-    
+
     if (!token) {
       return res.status(401).json({
         success: false,
         error: { message: 'Access denied. No token provided.' }
       });
     }
-    
+
     const decoded = auth.verifyToken(token);
     if (!decoded) {
       return res.status(401).json({
@@ -70,12 +70,12 @@ const auth = {
         error: { message: 'Invalid token.' }
       });
     }
-    
+
     req.user = decoded;
     next();
   },
-  
-  // Middleware d'autorisation par rôle
+
+  // Middleware d'autorisation par role
   authorize: (...roles) => {
     return (req, res, next) => {
       if (!req.user) {
@@ -84,7 +84,7 @@ const auth = {
           error: { message: 'User not authenticated' }
         });
       }
-      
+
       if (!roles.includes(req.user.role)) {
         logger.warn(`Unauthorized access attempt by user ${req.user.userId} with role ${req.user.role}`);
         return res.status(403).json({
@@ -92,7 +92,7 @@ const auth = {
           error: { message: 'Access denied. Insufficient permissions.' }
         });
       }
-      
+
       next();
     };
   }

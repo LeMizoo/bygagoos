@@ -1,85 +1,29 @@
 {
-  "name": "bygagoos-ink-backend",
+  "name": "bygagoos-api",
   "version": "1.0.0",
-  "description": "Backend API for ByGagoos Ink Management System",
-  "prisma": {
-    "seed": "node prisma/seed.js"
-  },
+  "private": true,
+  "type": "commonjs",
+  "main": "server.js",
   "scripts": {
-    "start": "node app.js",
-    "dev": "nodemon app.js",
-    "build": "prisma generate && prisma migrate deploy",
-    "test": "jest --testTimeout=10000",
-    "lint": "eslint .",
-    "seed": "node scripts/seed-real-data.js",
-    "seed:demo": "node scripts/seed-demo-data.js",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate deploy",
-    "prisma:migrate:dev": "prisma migrate dev",
-    "prisma:studio": "prisma studio",
-    "prisma:seed": "node prisma/seed.js",
-    "docker:build": "docker build -t bygagoos-backend .",
-    "docker:run": "docker run -p 3001:3001 bygagoos-backend",
-    "migrate": "npx prisma migrate dev",
-    "migrate:prod": "npx prisma migrate deploy",
-    "vercel-build": "npm install && npm run build"
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "vercel-build": "prisma generate"
   },
   "dependencies": {
-    "@prisma/client": "^5.22.0",
+    "@prisma/client": "^5.0.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
-    "dotenv": "^16.6.1",
-    "express": "^4.22.1",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.2",
     "express-rate-limit": "^7.1.5",
-    "express-validator": "^7.3.1",
-    "fs-extra": "^11.3.3",
-    "helmet": "^7.2.0",
-    "jsonwebtoken": "^9.0.3",
-    "mongodb": "^7.0.0",
-    "morgan": "^1.10.1",
-    "multer": "^1.4.5-lts.1",
-    "path": "^0.12.7",
-    "prisma": "^5.22.0",
-    "winston": "^3.11.0",
-    "winston-daily-rotate-file": "^4.7.1"
+    "helmet": "^7.0.0",
+    "jsonwebtoken": "^9.0.3"
   },
   "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
-    "@types/cors": "^2.8.17",
-    "@types/express": "^4.17.21",
-    "@types/fs-extra": "^11.0.4",
-    "@types/jsonwebtoken": "^9.0.5",
-    "@types/multer": "^1.4.11",
-    "@types/node": "^20.10.5",
-    "eslint": "^8.56.0",
-    "jest": "^29.7.0",
-    "mongodb-memory-server": "^11.0.1",
-    "nodemon": "^3.1.11",
-    "supertest": "^6.3.3",
-    "typescript": "^5.3.3"
+    "nodemon": "^3.0.1",
+    "prisma": "^5.0.0"
   },
   "engines": {
-    "node": ">=18.0.0"
-  },
-  "keywords": [
-    "api",
-    "backend",
-    "management",
-    "serigraphie",
-    "tattoo",
-    "bygagoos"
-  ],
-  "author": "ByGagoos Team",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/LeMizoo/bygagoos.git"
-  },
-  "bugs": {
-    "url": "https://github.com/LeMizoo/bygagoos/issues"
-  },
-  "homepage": "https://bygagoos-ink.vercel.app",
-  "volta": {
-    "node": "18.18.2"
+    "node": ">=18"
   }
 }

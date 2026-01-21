@@ -1,43 +1,101 @@
-# Dependencies
+# =============================================
+# BYGAGOOS INK - GIT IGNORE OPTIMISÉ
+# =============================================
+
+# === ENVIRONNEMENT ===
+.env
+.env.local
+.env.development
+.env.production
+.env.staging
+.env.test
+.env.*.local
+!.env.example
+
+# === DEPENDANCES ===
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.pnp.*
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnpm-store/
 
-# Environment variables
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# Build outputs
+# === BUILD ===
 dist/
 build/
+out/
+.next/
+.nuxt/
+.vite/
+*.local
+storybook-static/
 
-# IDE
+# === LOGS ===
+logs/
+*.log
+lerna-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+
+# === IDE ===
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
-# OS
+# === SYSTÈME ===
 .DS_Store
 Thumbs.db
+desktop.ini
+ehthumbs.db
 
-# Logs
-logs/
-*.log
+# === COUVERTURE DE TESTS ===
+coverage/
+.nyc_output/
+*.lcov
 
-# Database
-*.db
-*.sqlite
-
-# Docker
+# === DOCKER & VERCEL ===
 .dockerignore
+docker-compose.override.yml
+.vercel/
 
-# Temporary files
+# === TEMPORAIRE ===
 tmp/
 temp/
+*.tmp
+*.temp
+
+# === UPLOADS (BACKEND) ===
+backend/uploads/
+!backend/uploads/.gitkeep
+
+# === SPÉCIFIQUE FRONTEND ===
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/coverage/
+
+# === SPÉCIFIQUE BACKEND ===
+backend/node_modules/
+backend/logs/
+backend/coverage/
+
+# === CACHE ===
+.cache/
+.parcel-cache/
+.eslintcache
+.stylelintcache
+
+# === AUTRES ===
+*.pid
+*.seed
+*.pid.lock
+*.tsbuildinfo
+.yarn-integrity
 .vercel
 .env*.local

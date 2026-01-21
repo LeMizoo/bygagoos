@@ -1,0 +1,43 @@
+# FICHIERS ESSENTIELS À CONSERVER
+
+## Configuration
+.env.example
+.env.local
+.gitignore
+README.md
+vercel.json
+
+## Docker
+docker-compose.yml
+docker-compose.prod.yml
+backend/Dockerfile
+backend/Dockerfile.prod
+frontend/Dockerfile
+
+## Backend essentiel
+backend/package.json
+backend/app.js
+backend/.env.example
+backend/prisma/schema.prisma
+backend/controllers/
+backend/models/
+backend/routes/
+backend/middleware/
+backend/utils/
+backend/public/images/
+
+## Frontend essentiel
+frontend/package.json
+frontend/vite.config.js
+frontend/index.html
+frontend/.env.example
+frontend/src/
+
+## Scripts utiles
+start.sh
+start-project.sh
+cleanup.sh
+snapshot_etat_actuel.sh
+
+## Documentation
+docs/USER_MANUAL.md

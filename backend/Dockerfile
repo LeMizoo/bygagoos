@@ -1,5 +1,4 @@
-# Étape de build
-FROM node:18-alpine AS builder
+FROM node:18-alpine
 
 WORKDIR /app
 
@@ -10,27 +9,17 @@ COPY prisma ./prisma/
 # Installer les dépendances
 RUN npm ci --only=production
 
+# Installer Prisma CLI globalement pour les migrations
+RUN npm install -g prisma
+
+# Copier le reste du code
+COPY . .
+
 # Générer le client Prisma
 RUN npx prisma generate
 
-# Étape d'exécution
-FROM node:18-alpine
-
-WORKDIR /app
-
-# Installer les dépendances nécessaires pour Prisma
-RUN apk add --no-cache openssl
-
-# Copier depuis le builder
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/prisma ./prisma
-
-# Copier le code source
-COPY . .
-
 # Exposer le port
-EXPOSE 3001
+EXPOSE 5000
 
-# Commande de démarrage
-CMD ["sh", "-c", "npx prisma migrate deploy && npx prisma generate && node app.js"]
+# Démarrer l'application
+CMD ["npx", "prisma", "migrate", "deploy", "&&", "npm", "start"]

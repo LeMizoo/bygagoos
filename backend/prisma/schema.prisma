@@ -3,42 +3,101 @@ generator client {
 }
 
 datasource db {
-  provider = "mongodb"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
+////////////////////////////////////////////////////
+// MODELS
+////////////////////////////////////////////////////
+
 model User {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  id        String   @id @default(cuid())
   email     String   @unique
   password  String
   name      String?
+
+  // ADMIN | USER
+  role      String   @default("USER")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
-  @@map("users")
+}
+
+model Client {
+  id        String   @id @default(cuid())
+  name      String
+  email     String?  @unique
+  phone     String?
+  address   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders    Order[]
 }
 
 model Product {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  id          String   @id @default(cuid())
   name        String
   description String?
   price       Float
   category    String?
   stock       Int      @default(0)
+  imageUrl    String?
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
-  @@map("products")
+
+  orderItems  OrderItem[]
 }
 
 model Order {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId    String   @db.ObjectId
-  items     Json     // Array of product IDs and quantities
-  total     Float
-  status    String   @default("pending")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  
-  @@map("orders")
+  id          String   @id @default(cuid())
+  orderNumber String   @unique
+
+  // RECEIVED | IN_PRODUCTION | FINISHED | DELIVERED
+  status      String   @default("RECEIVED")
+
+  // Client (simple ou enregistré)
+  clientId    String?
+  clientName  String
+  phone       String
+  address     String?
+
+  // Gestion
+  totalAmount Float    @default(0)
+  notes       String?
+
+  // Dates
+  receivedAt  DateTime @default(now())
+  dueDate     DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  client      Client?    @relation(fields: [clientId], references: [id])
+  items       OrderItem[]
+}
+
+model OrderItem {
+  id        String   @id @default(cuid())
+  orderId   String
+  productId String
+  quantity  Int
+  price     Float
+
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id])
+}
+
+model Consumable {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  quantity    Int      @default(0)
+  unit        String?
+  minStock    Int      @default(10)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

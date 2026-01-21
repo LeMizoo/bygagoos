@@ -1,0 +1,31 @@
+{
+  "name": "bygagoos-backend",
+  "version": "1.0.0",
+  "main": "app.js",
+  "scripts": {
+    "dev": "nodemon app.js",
+    "start": "node app.js",
+    "setup": "prisma generate && prisma db push && node scripts/seed.js",
+    "vercel-build": "prisma generate",
+    "build": "echo 'No build required'",
+    "test": "echo 'No tests configured'"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.0.0",
+    "bcrypt": "^6.0.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
+    "helmet": "^7.0.0",
+    "jsonwebtoken": "^9.0.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1",
+    "prisma": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,127 @@
+const userService = require('../services/userService');
+const { generateToken } = require('../utils/auth');
+const { validationResult } = require('express-validator');
+
+exports.login = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { email, password } = req.body;
+
+    const user = await userService.findByEmail(email);
+    if (!user) {
+      return res.status(401).json({ 
+        error: 'Email ou mot de passe incorrect' 
+      });
+    }
+
+    const isValidPassword = await userService.verifyPassword(user, password);
+    if (!isValidPassword) {
+      return res.status(401).json({ 
+        error: 'Email ou mot de passe incorrect' 
+      });
+    }
+
+    const token = generateToken(user);
+    const { password: _, ...userWithoutPassword } = user;
+    
+    res.json({
+      message: 'Connexion réussie',
+      token,
+      user: userWithoutPassword
+    });
+
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ 
+      error: 'Erreur serveur lors de la connexion' 
+    });
+  }
+};
+
+exports.register = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { email, password, name } = req.body;
+
+    const existingUser = await userService.findByEmail(email);
+    if (existingUser) {
+      return res.status(400).json({ 
+        error: 'Cet email est déjà utilisé' 
+      });
+    }
+
+    const user = await userService.create({
+      email,
+      password,
+      name
+    });
+
+    const token = generateToken(user);
+    const { password: _, ...userWithoutPassword } = user;
+    
+    res.status(201).json({
+      message: 'Inscription réussie',
+      token,
+      user: userWithoutPassword
+    });
+
+  } catch (error) {
+    console.error('Register error:', error);
+    res.status(500).json({ 
+      error: 'Erreur serveur lors de l\'inscription' 
+    });
+  }
+};
+
+exports.getProfile = async (req, res) => {
+  try {
+    const user = await userService.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ 
+        error: 'Utilisateur non trouvé' 
+      });
+    }
+
+    const { password: _, ...userWithoutPassword } = user;
+    res.json(userWithoutPassword);
+
+  } catch (error) {
+    console.error('Get profile error:', error);
+    res.status(500).json({ 
+      error: 'Erreur serveur' 
+    });
+  }
+};
+
+exports.updateProfile = async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+    const updateData = {};
+
+    if (name) updateData.name = name;
+    if (email) updateData.email = email;
+    if (password) updateData.password = password;
+
+    const user = await userService.update(req.user.id, updateData);
+    const { password: _, ...userWithoutPassword } = user;
+
+    res.json({
+      message: 'Profil mis à jour',
+      user: userWithoutPassword
+    });
+
+  } catch (error) {
+    console.error('Update profile error:', error);
+    res.status(500).json({ 
+      error: 'Erreur serveur' 
+    });
+  }
+};

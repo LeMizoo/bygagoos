@@ -2,10 +2,10 @@
 
 echo "🧹 Nettoyage du projet ByGagoos Ink..."
 
-# Supprimer les fichiers de démo et temporaires
+# Supprimer les fichiers de demo et temporaires
 echo "🗑️  Suppression des fichiers temporaires..."
 
-# Fichiers racine à supprimer
+# Fichiers racine a supprimer
 rm -f *.bat *.sh *.ps1 *.yml *.backup 2>/dev/null
 
 # Conserver uniquement les fichiers essentiels
@@ -43,10 +43,10 @@ echo "🗑️  Suppression des dossiers inutiles..."
 rm -rf .vs/ nssm/ lib/ simple-frontend/ src/ 2>/dev/null
 rm -rf docs/ config/ shared/ 2>/dev/null || true
 
-# Vérifier la structure
+# Verifier la structure
 echo "📁 Structure finale:"
 find . -type f -name "*.js" -o -name "*.jsx" -o -name "*.json" -o -name "*.yml" | sort
 
 echo ""
-echo "✅ Nettoyage terminé !"
-echo "🎯 Projet prêt pour la production"
+echo "✅ Nettoyage termine !"
+echo "🎯 Projet pret pour la production"
